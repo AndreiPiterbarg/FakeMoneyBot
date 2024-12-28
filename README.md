@@ -1,0 +1,2 @@
+"# InitBot" 
+"# FakeMoneyBot" 
