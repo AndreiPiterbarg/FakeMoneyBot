@@ -4,8 +4,8 @@ import sys
 import os
 
 
-from historical.data_collector import start_collecting_data
-from strategies.momentum import run_momentum_strategy
+from testing.live.data_collector import start_collecting_data
+from strategies.live_momentum import run_momentum_strategy
 
 def main():
     collector_thread = threading.Thread(target=start_collecting_data, daemon=False)

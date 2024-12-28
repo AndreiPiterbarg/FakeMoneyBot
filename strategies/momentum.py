@@ -1,48 +1,59 @@
-# strategies/momentum.py
-
-from historical.data_store import get_data
-import database.trade_logger
 import pandas as pd
-from config import GlobalVars
-import historical.data_collector
-
-has_position = False
-
-def run_momentum_strategy():
+def run_momentum_strategy(df1):
     """Grab the latest data from data_store and run momentum logic."""
-    # Make a copy to avoid adding columns to the global df_prices
     global has_position
-    df = get_data().copy()
-
-    if len(df) < 26:
-        print("Not enough data yet.")
-        return
-
+    has_position = False
+    df = df1.copy()
+    
+    # Initialize DataFrame with correct dtypes
+    df_trades = pd.DataFrame({
+        "Decision": pd.Series(dtype='str'),
+        "Price": pd.Series(dtype='float64'),
+        "Amount_Dollars": pd.Series(dtype='float64'),
+        "Amount": pd.Series(dtype='float64'),
+    })
+    # Calculate indicators once outside the loop
     df["EMA12"] = df["Price"].ewm(span=12, adjust=False).mean()
     df["EMA26"] = df["Price"].ewm(span=26, adjust=False).mean()
     df['MACD'] = df['EMA12'] - df['EMA26']
     df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    
+    money = 100.0
+    amount = 0.0
 
-    last_row = df.iloc[-1]
-    second_last_row = df.iloc[-2]
+    for i in range(1, len(df)):
+        current_row = df.iloc[i]
+        previous_row = df.iloc[i-1]
+        price = current_row["Price"]
 
-    if second_last_row['MACD'] > second_last_row['Signal_Line'] and last_row['MACD'] < last_row['Signal_Line'] and not has_position:
-        curr_price = float(historical.data_collector.get_BTC_price_amount())
-        curr_money=GlobalVars.balance
-        GlobalVars.curr_amt =  curr_money/curr_price
-        database.trade_logger.buy(curr_price,curr_money, GlobalVars.curr_amt )
-        has_position = True
-        print('BUY BUY BUY')
-    elif second_last_row['MACD'] < second_last_row['Signal_Line'] and last_row['MACD'] > last_row['Signal_Line'] and has_position:
-        curr_price = float(historical.data_collector.get_BTC_price_amount())
-        GlobalVars.balance = curr_price * GlobalVars.curr_amt
-        curr_money=GlobalVars.balance
+        if (previous_row['MACD'] > previous_row['Signal_Line'] and 
+            current_row['MACD'] < current_row['Signal_Line'] and 
+            not has_position):
+            
+            amount = money / price
+            new_row = pd.DataFrame({
+                "Decision": ["BUY"],
+                "Price": [price],
+                "Amount_Dollars": [money],
+                "Amount": [amount],
+            })
+            df_trades = pd.concat([df_trades, new_row], ignore_index=True)
+            has_position = True
+            
+        elif (previous_row['MACD'] < previous_row['Signal_Line'] and 
+              current_row['MACD'] > current_row['Signal_Line'] and 
+              has_position):
+              
+            money = amount * price
+            amount = 0.0
+            new_row = pd.DataFrame({
+                "Decision": ["SELL"],
+                "Price": [price],
+                "Amount_Dollars": [money],
+                "Amount": [amount]
+            })
+            df_trades = pd.concat([df_trades, new_row], ignore_index=True)
+            has_position = False
 
-        GlobalVars.curr_amt =0
-
-        database.trade_logger.sell(curr_price, curr_money, GlobalVars.curr_amt)
-        has_position = False
-        print('SELL SELL SELL')
-    else:
-        database.trade_logger.nothing()
-        print("DO NADA")
+    
+    return df_trades
